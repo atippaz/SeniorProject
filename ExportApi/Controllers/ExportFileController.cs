@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System.Data.Common;
 
 namespace ExportApi.Controllers
 {
@@ -10,12 +11,12 @@ namespace ExportApi.Controllers
         {
 
         }
-
-        public IActionResult FilterColumn()
+        [HttpGet]
+        public IActionResult FilterColumn([FromQuery] string menuId)
         {
             try
             {
-                return Ok(DummyDataBase.FilterColumn.First(x => x.Key == "").Value);
+                return Ok(DummyDataBase.FilterColumn.First(x => x.Key == menuId).Value);
             }
             catch (Exception ex)
             {
@@ -23,6 +24,7 @@ namespace ExportApi.Controllers
             }
         }
 
+        [HttpGet]
         public IActionResult MenuData()
         {
             try
@@ -35,34 +37,69 @@ namespace ExportApi.Controllers
             }
         }
 
-        public IActionResult ExportFileApi()
+        [HttpPost]
+        public IActionResult ExportFileApi([FromBody] RequestFile request)
         {
             try
             {
-                FilterDataRequest[] fileterDatas = new FilterDataRequest[]
-              {
-                    new FilterDataRequest { column = "",value="" },
-                    new FilterDataRequest { column = "",value="" },
-              };
-                var columns = new string[] { };
-                var data = createDataFilter(fileterDatas, columns, "");
+                var data = createDataFilter(request.filters ?? new FilterData[] { }, request.columns ?? new string[] { }, request.menuId);
+                if (request.fileType == "xlsx")
+                {
+                    return Ok(data);
+                }
+                else if (request.fileType == "csv")
+                {
+                    return Ok(data);
+                }
+                else
+                {
+                    throw new Exception("error file type support!!");
+                }
                 // send to node or use csv helper 
-                return Ok(data);
             }
             catch (Exception ex)
             {
                 return Ok(ex);
             }
         }
-        class FilterDataRequest
+
+        [HttpPost]
+        public IActionResult PreviewData([FromBody] RequestPreview request)
         {
-            public string column { get; set; }
-            public string value { get; set; }
+            try
+            {
+                var result = createDataFilter(request.filters ?? new FilterData[0], request.columns ?? new string[0], request.menuId);
+                result.body = result.body.Take(5).ToList();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return Ok(ex);
+            }
         }
-        List<List<string>> createDataFilter(FilterDataRequest[] fileterDatas, string[] columns, string menuName)
+
+        [HttpGet]
+        public IActionResult ColumnData([FromQuery] string menuId)
+        {
+
+            try
+            {
+                return Ok(DummyDataBase.DataColumn.First(x => x.Key == menuId).Value);
+            }
+            catch (Exception ex)
+            {
+                return Ok(ex);
+            }
+        }
+
+        // helper function 
+        DataFormat createDataFilter(FilterData[] fileterDatas, string[] columns, string menuName)
         {
             var datas = DummyDataBase.DataDummy.FirstOrDefault(x => x.Key == menuName);
-            List<List<string>> results = new();
+            if (!columns.Any())
+                columns = DummyDataBase.DataColumn.FirstOrDefault(x => x.Key == menuName).Value.ToArray();
+            DataFormat results = new();
+            results.header = columns;
             foreach (var data in datas.Value)
             {
                 var temps = data.AsQueryable();
@@ -70,7 +107,7 @@ namespace ExportApi.Controllers
                 {
                     temps = temps.Where(x => x.Key == fileterData.column && x.Value == fileterData.value);
                 }
-                foreach (var column in columns)
+                foreach (var column in results.header)
                 {
                     var result = new List<string>();
                     foreach (var temp in temps)
@@ -80,40 +117,30 @@ namespace ExportApi.Controllers
                             result.Add(temp.Value);
                         }
                     }
-                    results.Add(result);
+                    results.body.Add(result);
                 }
             }
             return results;
         }
-        public IActionResult PreviewData()
-        {
-            try
-            {
-                FilterDataRequest[] fileterDatas = new FilterDataRequest[]
-                {
-                    new FilterDataRequest { column = "",value="" },
-                    new FilterDataRequest { column = "",value="" },
-                };
-                var columns = new string[] { };
-                return Ok(createDataFilter(fileterDatas, columns, "").Take(5).ToList());
-            }
-            catch (Exception ex)
-            {
-                return Ok(ex);
-            }
-        }
-
-        public IActionResult ColumnData()
-        {
-
-            try
-            {
-                return Ok(DummyDataBase.DataColumn.First(x => x.Key == "").Value);
-            }
-            catch (Exception ex)
-            {
-                return Ok(ex);
-            }
-        }
+    }
+    public class FilterData
+    {
+        public string column { get; set; }
+        public string value { get; set; }
+    }
+    public class RequestFile : RequestPreview
+    {
+        public string fileType { get; set; }
+    }
+    public class RequestPreview
+    {
+        public FilterData[]? filters { get; set; }
+        public string[]? columns { get; set; }
+        public string menuId { get; set; }
+    }
+    public class DataFormat
+    {
+        public string[] header { get; set; }
+        public List<List<string>> body { get; set; } = new List<List<string>>();
     }
 }
